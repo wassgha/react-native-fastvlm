@@ -9,18 +9,16 @@ Pod::Spec.new do |s|
   s.description    = package['description']
   s.license        = package['license']
   s.author         = package['author']
-  s.homepage       = package['homepage']
+  s.homepage       = package['homepage'] || 'https://github.com/user/react-native-fastvlm'
   s.platforms      = { :ios => '17.0' }
   s.swift_version  = '5.9'
-  s.source         = { :git => package['repository']['url'], :tag => "v#{s.version}" }
+  s.source         = { :git => 'https://github.com/user/react-native-fastvlm.git', :tag => "v#{s.version}" }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
 
-  # MLX dependencies for FastVLM
-  s.dependency 'mlx-swift', '~> 0.21'
-  s.dependency 'mlx-swift-lm', '~> 0.21'
-  s.dependency 'ZIPFoundation', '~> 0.9'
+  # Note: MLX Swift packages must be added manually via Swift Package Manager
+  # See README.md for setup instructions
 
   # Source files
   s.source_files = 'ios/**/*.{swift,h,m}'
@@ -28,12 +26,6 @@ Pod::Spec.new do |s|
   # Build settings
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    'SWIFT_COMPILATION_MODE' => 'wholemodule',
-    'OTHER_SWIFT_FLAGS' => '-DMLX_SWIFT'
+    'SWIFT_COMPILATION_MODE' => 'wholemodule'
   }
-
-  # Resource bundles (for model files if bundled)
-  # s.resource_bundles = {
-  #   'FastVLMResources' => ['ios/Resources/**/*']
-  # }
 end

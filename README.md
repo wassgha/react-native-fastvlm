@@ -30,6 +30,44 @@ For Expo projects, run:
 npx expo prebuild
 ```
 
+### iOS Setup - Adding MLX Swift Packages
+
+The MLX framework is distributed via Swift Package Manager (SPM), not CocoaPods. After running `expo prebuild`, you need to manually add the required packages to your Xcode project.
+
+**Prerequisites**: Download the Metal toolchain (required for MLX compilation):
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
+
+1. Open your iOS project in Xcode:
+   ```bash
+   open ios/YourApp.xcworkspace
+   ```
+
+2. In Xcode, go to **File → Add Package Dependencies...**
+
+3. Add the following packages:
+
+   | Package URL | Version |
+   |-------------|---------|
+   | `https://github.com/ml-explore/mlx-swift` | 0.21.0+ |
+   | `https://github.com/ml-explore/mlx-swift-examples` | 0.21.0+ |
+
+4. When prompted, add these libraries to your app target:
+   - `MLX`
+   - `MLXRandom`
+   - `MLXNN`
+   - `MLXOptimizers`
+   - `MLXFFT`
+   - `MLXLinalg`
+   - `Cmlx`
+   - `LLM` (from mlx-swift-examples)
+   - `MLXVLM` (from mlx-swift-examples)
+   - `MLXLMCommon` (from mlx-swift-examples)
+
+5. Build and run your project
+
 ## Quick Start
 
 ```typescript
