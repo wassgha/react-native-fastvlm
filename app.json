@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.wassgha.reactnativefastvlm"
+  },
+  "ios": {
+    "bundleIdentifier": "com.wassgha.reactnativefastvlm"
+  }
+}

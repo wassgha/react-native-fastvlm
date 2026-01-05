@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf build",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "keywords": [
     "react-native",
@@ -31,7 +33,11 @@
     "url": "https://github.com/user/react-native-fastvlm/issues"
   },
   "homepage": "https://github.com/user/react-native-fastvlm#readme",
-  "dependencies": {},
+  "dependencies": {
+    "expo": "~54.0.30",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "expo-modules-core": "^2.0.0",
