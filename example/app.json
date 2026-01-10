@@ -11,7 +11,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.example.fastvlm",
-      "deploymentTarget": "17.0",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to analyze images with AI.",
         "NSPhotoLibraryUsageDescription": "This app accesses your photos to analyze images with AI."
@@ -38,7 +37,7 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos for image analysis."
         }
       ],
-      "expo-build-properties"
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

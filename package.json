@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "React Native module for Apple's FastVLM vision-language model",
   "main": "build/index.js",
+  "expo-module": "expo-module.config.json",
   "types": "build/index.d.ts",
   "scripts": {
     "build": "tsc",
@@ -33,19 +34,14 @@
     "url": "https://github.com/user/react-native-fastvlm/issues"
   },
   "homepage": "https://github.com/user/react-native-fastvlm#readme",
-  "dependencies": {
-    "expo": "~54.0.30",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
-  },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "expo-modules-core": "^2.0.0",
+    "@types/react": "^18.0.0",
     "typescript": "^5.3.0"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=50.0.0",
+    "expo-modules-core": ">=2.0.0",
+    "react": ">=18.0.0",
+    "react-native": ">=0.73.0"
   }
 }

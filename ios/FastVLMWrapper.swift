@@ -58,10 +58,13 @@ class FastVLMWrapper {
     private var state = State.idle
 
     // Model configuration
-    private let modelDirectory: URL = {
+    private var modelDirectory: URL {
+        if let customPath = config?["modelPath"] as? String {
+            return URL(fileURLWithPath: customPath)
+        }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appendingPathComponent("FastVLM/model", isDirectory: true)
-    }()
+    }
 
     private let modelIdentifier = "llava-fastvithd_0.5b_stage3_llm.fp16"
     private var modelDownloadURL: URL {
@@ -165,41 +168,16 @@ class FastVLMWrapper {
     }
 
     private func downloadFile(from url: URL, to destination: URL, progressHandler: @escaping (Double, String) -> Void) async throws {
-        let session = URLSession.shared
-
-        let (asyncBytes, response) = try await session.bytes(from: url)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw FastVLMError.downloadFailed
+        let downloader = ModelDownloader()
+        let tempURL = try await downloader.download(url: url) { progress in
+            let msg = String(format: "Downloading %d%%", Int(progress * 100))
+            progressHandler(progress, msg)
         }
-
-        let contentLength = response.expectedContentLength
-        var data = Data()
-        data.reserveCapacity(Int(contentLength))
-
-        var received: Int64 = 0
-        let mb = 1024.0 * 1024.0
-
-        for try await byte in asyncBytes {
-            data.append(byte)
-            received += 1
-
-            // Update progress roughly every 1MB
-            if received % (1024 * 1024) == 0 {
-                let progress = contentLength > 0 ? Double(received) / Double(contentLength) : 0
-                let writtenMB = Double(received) / mb
-
-                if contentLength > 0 {
-                    progressHandler(progress, String(format: "Downloading %d%%", Int(progress * 100)))
-                    print(String(format: "[FastVLM] Download progress: %.0f MB (%.0f%%)", writtenMB, progress * 100))
-                } else {
-                    progressHandler(0, String(format: "Downloading %.0f MB", writtenMB))
-                }
-            }
+        
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
         }
-
-        try data.write(to: destination)
+        try FileManager.default.moveItem(at: tempURL, to: destination)
     }
 
     private func unzipItem(at sourceURL: URL, to destinationURL: URL, progressHandler: @escaping (Double) -> Void) async throws {
@@ -232,18 +210,16 @@ class FastVLMWrapper {
             }
         }
         #else
-        // Fallback to system unzip
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-o", sourceURL.path, "-d", destinationURL.path]
+        // ZIPFoundation not available - use built-in unzipping via FileManager
+        // iOS doesn't have Process class, so we use a simpler approach
+        print("[FastVLM] ZIPFoundation not available, using fallback unzip")
 
-        try process.run()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            throw FastVLMError.downloadFailed
-        }
-        progressHandler(1.0)
+        // Use SSZipArchive-style approach or throw error
+        throw NSError(
+            domain: "FastVLMWrapper",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "ZIPFoundation is required for model extraction. Please add ZIPFoundation to your project."]
+        )
         #endif
     }
 
@@ -558,3 +534,44 @@ protocol VisionEmbeddingProvider {
     func getVisionEmbeddings(for image: CIImage) throws -> MLXArray
 }
 #endif
+
+// MARK: - Downloader Helper
+class ModelDownloader: NSObject, URLSessionDownloadDelegate {
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var progressHandler: ((Double) -> Void)?
+
+    func download(url: URL, progress: @escaping (Double) -> Void) async throws -> URL {
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            self.progressHandler = progress
+            
+            let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+            let task = session.downloadTask(with: url)
+            task.resume()
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        do {
+            try FileManager.default.moveItem(at: location, to: dest)
+            continuation?.resume(returning: dest)
+        } catch {
+            continuation?.resume(throwing: error)
+        }
+        continuation = nil
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let p = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0
+        progressHandler?(p)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            continuation?.resume(throwing: error)
+            continuation = nil
+        }
+        session.finishTasksAndInvalidate()
+    }
+}

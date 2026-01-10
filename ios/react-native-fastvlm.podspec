@@ -1,6 +1,6 @@
 require 'json'
 
-package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
+package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
 
 Pod::Spec.new do |s|
   s.name           = 'react-native-fastvlm'
@@ -16,12 +16,13 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'ZIPFoundation', '~> 0.9'
 
   # Note: MLX Swift packages must be added manually via Swift Package Manager
   # See README.md for setup instructions
 
   # Source files
-  s.source_files = 'ios/**/*.{swift,h,m}'
+  s.source_files = '**/*.{swift,h,m}'
 
   # Build settings
   s.pod_target_xcconfig = {

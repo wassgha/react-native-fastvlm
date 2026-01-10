@@ -1,438 +1,397 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
+  ScrollView,
   TextInput,
   TouchableOpacity,
-  Image,
-  ScrollView,
   ActivityIndicator,
+  Image,
   Alert,
+  SafeAreaView,
 } from 'react-native';
+import { useFastVLM } from 'react-native-fastvlm';
 import * as ImagePicker from 'expo-image-picker';
-import { FastVLM } from 'react-native-fastvlm';
-import type { TokenEvent, DownloadProgressEvent, GenerateResult } from 'react-native-fastvlm';
-
-type ModelStatus = 'not_downloaded' | 'downloading' | 'ready' | 'loading' | 'generating' | 'error';
+import { Link } from 'expo-router';
 
 export default function App() {
-  const [modelStatus, setModelStatus] = useState<ModelStatus>('not_downloaded');
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [prompt, setPrompt] = useState('What do you see in this image?');
+  const {
+    status,
+    downloadProgress,
+    output,
+    isGenerating,
+    error,
+    stats,
+    download,
+    load,
+    generateStream,
+    cancel,
+    initialize,
+  } = useFastVLM({ autoInitialize: true, autoLoad: true });
+
+  const [prompt, setPrompt] = useState('Describe this image in detail.');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [output, setOutput] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [stats, setStats] = useState<{
-    promptTime?: number;
-    totalTime?: number;
-    tokensPerSecond?: number;
-  }>({});
 
-  // Initialize module and check model status
-  useEffect(() => {
-    async function init() {
-      try {
-        await FastVLM.initialize();
-        const downloaded = await FastVLM.isModelDownloaded();
-        setModelStatus(downloaded ? 'ready' : 'not_downloaded');
-      } catch (error) {
-        console.error('Failed to initialize FastVLM:', error);
-        setModelStatus('error');
-      }
-    }
-    init();
-  }, []);
-
-  // Set up event listeners
-  useEffect(() => {
-    const tokenSub = FastVLM.addTokenListener((event: TokenEvent) => {
-      setOutput(event.text);
-      if (event.isComplete) {
-        setIsStreaming(false);
-      }
-    });
-
-    const progressSub = FastVLM.addDownloadProgressListener((event: DownloadProgressEvent) => {
-      setDownloadProgress(event.progress);
-    });
-
-    const completeSub = FastVLM.addGenerationCompleteListener((event: GenerateResult) => {
-      setStats({
-        promptTime: event.promptTimeMs,
-        totalTime: event.totalTimeMs,
-        tokensPerSecond: event.tokensPerSecond,
-      });
-      setModelStatus('ready');
-    });
-
-    const errorSub = FastVLM.addErrorListener((event) => {
-      Alert.alert('Error', event.error);
-      setModelStatus('ready');
-    });
-
-    return () => {
-      tokenSub.remove();
-      progressSub.remove();
-      completeSub.remove();
-      errorSub.remove();
-    };
-  }, []);
-
-  const handleDownload = useCallback(async () => {
-    setModelStatus('downloading');
-    setDownloadProgress(0);
-
-    try {
-      const success = await FastVLM.downloadModel();
-      if (success) {
-        await FastVLM.loadModel();
-        setModelStatus('ready');
-      } else {
-        setModelStatus('error');
-        Alert.alert('Error', 'Failed to download model');
-      }
-    } catch (error) {
-      setModelStatus('error');
-      Alert.alert('Error', String(error));
-    }
-  }, []);
-
-  const handlePickImage = useCallback(async () => {
+  const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0]) {
       setSelectedImage(result.assets[0].uri);
-    }
-  }, []);
-
-  const handleTakePhoto = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Camera permission is required');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
-    }
-  }, []);
-
-  const handleGenerate = useCallback(async () => {
-    if (!prompt.trim()) {
-      Alert.alert('Error', 'Please enter a prompt');
-      return;
-    }
-
-    setOutput('');
-    setStats({});
-    setModelStatus('generating');
-    setIsStreaming(true);
-
-    try {
-      await FastVLM.generateStream(
-        {
-          prompt: prompt.trim(),
-          image: selectedImage ? { uri: selectedImage } : undefined,
-        },
-        {
-          temperature: 0.0,
-          maxTokens: 240,
-        }
-      );
-    } catch (error) {
-      Alert.alert('Error', String(error));
-      setModelStatus('ready');
-      setIsStreaming(false);
-    }
-  }, [prompt, selectedImage]);
-
-  const handleCancel = useCallback(async () => {
-    await FastVLM.cancelGeneration();
-    setIsStreaming(false);
-    setModelStatus('ready');
-  }, []);
-
-  const renderModelStatus = () => {
-    switch (modelStatus) {
-      case 'not_downloaded':
-        return (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>Model not downloaded</Text>
-            <TouchableOpacity style={styles.button} onPress={handleDownload}>
-              <Text style={styles.buttonText}>Download Model (~500MB)</Text>
-            </TouchableOpacity>
-          </View>
-        );
-
-      case 'downloading':
-        return (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>
-              Downloading... {Math.round(downloadProgress * 100)}%
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${downloadProgress * 100}%` }]} />
-            </View>
-          </View>
-        );
-
-      case 'loading':
-        return (
-          <View style={styles.statusContainer}>
-            <ActivityIndicator size="large" />
-            <Text style={styles.statusText}>Loading model...</Text>
-          </View>
-        );
-
-      case 'error':
-        return (
-          <View style={styles.statusContainer}>
-            <Text style={[styles.statusText, styles.errorText]}>Error loading model</Text>
-            <TouchableOpacity style={styles.button} onPress={handleDownload}>
-              <Text style={styles.buttonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        );
-
-      default:
-        return null;
     }
   };
 
-  const isReady = modelStatus === 'ready' || modelStatus === 'generating';
+  const handleGenerate = async () => {
+    if (status !== 'ready') {
+      Alert.alert('Model not ready', `Current status: ${status}`);
+      return;
+    }
+
+    try {
+      await generateStream(
+        {
+          prompt,
+          image: selectedImage ? { uri: selectedImage } : undefined,
+        },
+        {
+          maxTokens: 500,
+          temperature: 0.7,
+        }
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const renderStatus = () => {
+    switch (status) {
+      case 'downloading':
+        return (
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={styles.statusText}>
+              Downloading Model... {(downloadProgress * 100).toFixed(1)}%
+            </Text>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${downloadProgress * 100}%` },
+                ]}
+              />
+            </View>
+          </View>
+        );
+      case 'not_downloaded':
+        return (
+          <TouchableOpacity style={styles.actionButton} onPress={download}>
+            <Text style={styles.actionButtonText}>Download Model</Text>
+          </TouchableOpacity>
+        );
+      case 'initializing':
+      case 'loading':
+        return (
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={styles.statusText}>
+              {status === 'initializing' ? 'Initializing...' : 'Loading Model...'}
+            </Text>
+          </View>
+        );
+      case 'ready':
+        return (
+          <View style={styles.readyContainer}>
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusBadgeText}>Model Ready</Text>
+            </View>
+          </View>
+        );
+      case 'error':
+        return (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Error: {error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={initialize}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      default:
+        return <Text>Status: {status}</Text>;
+    }
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {renderModelStatus()}
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <Text style={styles.title}>FastVLM Demo</Text>
+          <Link href="/embeddings" asChild>
+            <TouchableOpacity style={styles.linkButton}>
+              <Text style={styles.linkButtonText}>Go to Embeddings →</Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
 
-      {isReady && (
-        <>
-          {/* Image Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Image (Optional)</Text>
-            <View style={styles.imageButtons}>
-              <TouchableOpacity
-                style={[styles.button, styles.halfButton]}
-                onPress={handlePickImage}
-              >
-                <Text style={styles.buttonText}>Pick Image</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.halfButton]}
-                onPress={handleTakePhoto}
-              >
-                <Text style={styles.buttonText}>Take Photo</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Model Status</Text>
+          {renderStatus()}
+        </View>
 
-            {selectedImage && (
-              <View style={styles.imageContainer}>
-                <Image source={{ uri: selectedImage }} style={styles.selectedImage} />
-                <TouchableOpacity
-                  style={styles.removeImage}
-                  onPress={() => setSelectedImage(null)}
-                >
-                  <Text style={styles.removeImageText}>x</Text>
-                </TouchableOpacity>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Input</Text>
+
+          <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+            {selectedImage ? (
+              <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
 
-          {/* Prompt Input */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Prompt</Text>
-            <TextInput
-              style={styles.textInput}
-              value={prompt}
-              onChangeText={setPrompt}
-              placeholder="Enter your prompt..."
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+          <Text style={styles.label}>Prompt</Text>
+          <TextInput
+            style={styles.input}
+            value={prompt}
+            onChangeText={setPrompt}
+            placeholder="Enter prompt..."
+            multiline
+          />
 
-          {/* Generate Button */}
-          <View style={styles.section}>
-            {isStreaming ? (
-              <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={handleCancel}>
-                <Text style={styles.buttonText}>Cancel</Text>
+          <View style={styles.buttonRow}>
+            {isGenerating ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.stopButton]}
+                onPress={cancel}
+              >
+                <Text style={styles.actionButtonText}>Stop Generation</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, styles.generateButton]}
+                style={[
+                  styles.actionButton,
+                  (status !== 'ready' || (!prompt && !selectedImage)) && styles.disabledButton,
+                ]}
                 onPress={handleGenerate}
+                disabled={status !== 'ready' || (!prompt && !selectedImage)}
               >
-                <Text style={styles.buttonText}>Generate</Text>
+                <Text style={styles.actionButtonText}>Generate</Text>
               </TouchableOpacity>
             )}
           </View>
+        </View>
 
-          {/* Output */}
-          {(output || isStreaming) && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Output {isStreaming && <ActivityIndicator size="small" />}
-              </Text>
-              <View style={styles.outputContainer}>
-                <Text style={styles.outputText}>{output || 'Generating...'}</Text>
-              </View>
-
-              {stats.tokensPerSecond && (
-                <View style={styles.statsContainer}>
-                  <Text style={styles.statsText}>
-                    Time to first token: {stats.promptTime?.toFixed(0)}ms
-                  </Text>
-                  <Text style={styles.statsText}>
-                    Total time: {stats.totalTime?.toFixed(0)}ms
-                  </Text>
-                  <Text style={styles.statsText}>
-                    Speed: {stats.tokensPerSecond?.toFixed(1)} tokens/s
-                  </Text>
-                </View>
-              )}
+        {(output || isGenerating) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Output</Text>
+            <View style={styles.outputContainer}>
+              <Text style={styles.outputText}>{output}</Text>
+              {isGenerating && <View style={styles.cursor} />}
             </View>
-          )}
-        </>
-      )}
-    </ScrollView>
+
+            {stats.tokenCount !== undefined && (
+              <View style={styles.statsContainer}>
+                <Text style={styles.statsText}>
+                  {stats.tokenCount} tokens | {stats.tokensPerSecond?.toFixed(1)} t/s | {(stats.totalTimeMs! / 1000).toFixed(1)}s
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F2F2F7',
   },
-  content: {
+  scrollContent: {
+    padding: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  linkButton: {
+    padding: 8,
+  },
+  linkButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  section: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
     padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1C1C1E',
   },
   statusContainer: {
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    marginBottom: 16,
+    padding: 10,
   },
   statusText: {
+    marginTop: 8,
     fontSize: 16,
-    marginBottom: 12,
-    color: '#333',
-  },
-  errorText: {
-    color: '#d32f2f',
+    color: '#666',
   },
   progressBar: {
     width: '100%',
-    height: 8,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
+    height: 6,
+    backgroundColor: '#E5E5EA',
+    borderRadius: 3,
+    marginTop: 10,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#4caf50',
+    backgroundColor: '#007AFF',
   },
-  section: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  button: {
-    backgroundColor: '#007aff',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  halfButton: {
-    flex: 1,
-  },
-  imageButtons: {
+  readyContainer: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  imageContainer: {
-    marginTop: 12,
-    position: 'relative',
-  },
-  selectedImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    backgroundColor: '#e0e0e0',
-  },
-  removeImage: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
+  },
+  statusBadge: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  statusBadgeText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  errorContainer: {
+    padding: 10,
+    backgroundColor: '#FF3B3015',
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#FF3B30',
+    marginBottom: 10,
+  },
+  retryButton: {
+    backgroundColor: '#FF3B30',
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  imagePicker: {
+    height: 200,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
     justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderStyle: 'dashed',
   },
-  removeImageText: {
-    color: 'white',
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  imagePlaceholder: {
+    alignItems: 'center',
+  },
+  imagePlaceholderText: {
+    color: '#007AFF',
     fontSize: 16,
-    fontWeight: 'bold',
   },
-  textInput: {
-    backgroundColor: 'white',
-    borderRadius: 10,
+  label: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+    color: '#333',
+  },
+  input: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
     padding: 12,
     fontSize: 16,
     minHeight: 80,
+    marginBottom: 16,
     textAlignVertical: 'top',
   },
-  generateButton: {
-    backgroundColor: '#34c759',
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
-  cancelButton: {
-    backgroundColor: '#ff3b30',
+  actionButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  stopButton: {
+    backgroundColor: '#FF3B30',
+  },
+  disabledButton: {
+    backgroundColor: '#A0A0A0',
+  },
+  actionButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
   },
   outputContainer: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 16,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
+    padding: 12,
     minHeight: 100,
   },
   outputText: {
     fontSize: 16,
+    color: '#000',
     lineHeight: 24,
-    color: '#333',
+  },
+  cursor: {
+    width: 2,
+    height: 20,
+    backgroundColor: '#007AFF',
+    marginTop: 4,
   },
   statsContainer: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 8,
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
   statsText: {
-    fontSize: 13,
-    color: '#2e7d32',
-    marginBottom: 4,
+    fontSize: 12,
+    color: '#8E8E93',
   },
 });

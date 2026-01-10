@@ -24,10 +24,12 @@ public class FastVLMModule: Module {
         // Initialize the module with optional configuration
         AsyncFunction("initialize") { (config: [String: Any]?) in
             self.currentConfig = config
-            self.modelWrapper = FastVLMWrapper(
-                config: config,
-                eventEmitter: self
-            )
+            await MainActor.run {
+                self.modelWrapper = FastVLMWrapper(
+                    config: config,
+                    eventEmitter: self
+                )
+            }
             self.sendEvent("onModelStateChange", [
                 "state": "idle",
                 "message": "Module initialized"
@@ -36,7 +38,9 @@ public class FastVLMModule: Module {
 
         // Check if model is downloaded
         AsyncFunction("isModelDownloaded") { () -> Bool in
-            return FastVLMWrapper.modelExists()
+            return await MainActor.run {
+                FastVLMWrapper.modelExists()
+            }
         }
 
         // Download the model
@@ -101,7 +105,9 @@ public class FastVLMModule: Module {
                 return false
             }
 
-            let unloaded = wrapper.unload()
+            let unloaded = await MainActor.run {
+                wrapper.unload()
+            }
             if unloaded {
                 self.sendEvent("onModelStateChange", [
                     "state": "idle",
@@ -184,7 +190,9 @@ public class FastVLMModule: Module {
 
         // Cancel current generation
         AsyncFunction("cancelGeneration") {
-            self.modelWrapper?.cancel()
+            await MainActor.run {
+                self.modelWrapper?.cancel()
+            }
         }
 
         // Get text embedding
@@ -218,12 +226,16 @@ public class FastVLMModule: Module {
 
         // Get current model state
         AsyncFunction("getModelState") { () -> String in
-            return self.modelWrapper?.getState() ?? "idle"
+            return await MainActor.run {
+                self.modelWrapper?.getState() ?? "idle"
+            }
         }
 
         // Check if currently generating
         AsyncFunction("isGenerating") { () -> Bool in
-            return self.modelWrapper?.isGenerating() ?? false
+            return await MainActor.run {
+                self.modelWrapper?.isGenerating() ?? false
+            }
         }
     }
 
